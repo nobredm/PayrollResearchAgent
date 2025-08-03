@@ -1,60 +1,48 @@
-"""Simple LLM-based agent built with LangGraph.
+import os
+import sys
+from typing import Any
 
-This script demonstrates how to construct a minimal LangGraph workflow
-that routes a user's question through an LLM. If an OpenAI API key is
-available, the agent will call an OpenAI model; otherwise it falls back
-to a deterministic fake LLM so the example can run offline.
-"""
-from __future__ import annotations
+from langgraph.prebuilt import create_react_agent
+from langchain_community.tools import WikipediaQueryRun
+from langchain_community.utilities import WikipediaAPIWrapper
+from langgraph.graph import MessagesState, StateGraph, END
 
-from typing import Dict
-
-from langgraph.graph import START, END, StateGraph
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.language_models.fake import FakeListLLM
-
+# Depending on whether an OpenAI key is available, use a real LLM or a fake placeholder
 try:
     from langchain_openai import ChatOpenAI
-except Exception:  # pragma: no cover - optional dependency
-    ChatOpenAI = None  # type: ignore
+    from langchain_community.chat_models.fake import FakeListChatModel
+except Exception as exc:  # pragma: no cover - fail-fast in case packages missing
+    raise RuntimeError("Required packages are not installed") from exc
 
 
-def get_model():
-    """Return an LLM instance.
+def build_agent() -> Any:
+    """Create a LangGraph ReAct agent with a Wikipedia tool."""
+    if os.getenv("OPENAI_API_KEY"):
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        wiki_tool = WikipediaQueryRun(api_wrapper=WikipediaAPIWrapper())
+        return create_react_agent(llm, [wiki_tool])
 
-    Uses ChatOpenAI if available, otherwise falls back to FakeListLLM so the
-    script can run without external credentials.
-    """
-    if ChatOpenAI is not None:
-        try:
-            return ChatOpenAI()
-        except Exception:
-            pass
-    return FakeListLLM(responses=["Hello from a fake LLM!"], n=1)
+    # Fallback used in environments without API access so examples still run
+    llm = FakeListChatModel(responses=["This is a placeholder response."])
+
+    def call_model(state: MessagesState) -> dict:
+        response = llm.invoke(state["messages"])
+        return {"messages": state["messages"] + [response]}
+
+    graph = StateGraph(MessagesState)
+    graph.add_node("agent", call_model)
+    graph.add_edge("agent", END)
+    graph.set_entry_point("agent")
+    return graph.compile()
 
 
-def build_agent():
-    """Compile and return a LangGraph app that answers a question."""
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant."),
-        ("human", "{question}"),
-    ])
-    model = get_model()
-    chain = prompt | model | StrOutputParser()
-
-    def call_model(state: Dict[str, str]) -> Dict[str, str]:
-        answer = chain.invoke({"question": state["question"]})
-        return {"answer": answer}
-
-    workflow = StateGraph(dict)
-    workflow.add_node("model", call_model)
-    workflow.add_edge(START, "model")
-    workflow.add_edge("model", END)
-    return workflow.compile()
+def main() -> None:
+    question = sys.argv[1] if len(sys.argv) > 1 else "What is payroll tax?"
+    graph = build_agent()
+    result = graph.invoke({"messages": [("user", question)]})
+    final_message = result["messages"][-1].content
+    print(final_message)
 
 
 if __name__ == "__main__":
-    app = build_agent()
-    result = app.invoke({"question": "What is LangGraph?"})
-    print(result["answer"])
+    main()

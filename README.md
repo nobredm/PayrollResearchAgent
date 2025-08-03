@@ -1,21 +1,21 @@
 # PayrollResearchAgent
 
-This repository contains an example LLM-based agent built with [LangGraph](https://github.com/langchain-ai/langgraph).
-The agent demonstrates a simple workflow that sends a user's question to an LLM and returns the model's answer.
+This repository demonstrates a minimal LLM agent built with [LangGraph](https://github.com/langchain-ai/langgraph).
+The agent uses a ReAct-style loop and can query Wikipedia to gather information about payroll concepts.
 
-## Running the agent
+## Setup
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. Provide an OpenAI API key in the `OPENAI_API_KEY` environment variable to use a real model.
+   Without a key, the script falls back to a fake model that returns placeholder text.
 
-Install the dependencies:
+## Usage
+Run the agent with a question about payroll:
 
 ```bash
-pip install langgraph langchain-core langchain-openai langchain-community
+python agent.py "What is payroll tax?"
 ```
 
-Execute the script:
-
-```bash
-python agent.py
-```
-
-By default the script uses a deterministic fake LLM so that it can run offline.
-If an `OPENAI_API_KEY` environment variable is set, the agent will instead use OpenAI's models via `langchain-openai`.
+The final answer will be printed to the console.
